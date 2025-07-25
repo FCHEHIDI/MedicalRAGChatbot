@@ -1,0 +1,107 @@
+# Dependencies
+node_modules/
+backend/__pycache__/
+backend/venv/
+backend/.env
+frontend/node_modules/
+frontend/.env
+frontend/.env.local
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Build outputs
+frontend/build/
+backend/dist/
+*.tgz
+*.tar.gz
+
+# API Keys and Environment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Documentation (Personal Review)
+docs/
+
+# Keep assets for reuse
+!assets/
+
+# Database files (local only)
+chroma_db/
+*.db
+*.sqlite3
+
+# Model files (too large for git)
+*.bin
+*.safetensors
+models/
+
+# Azure deployment
+.azure/
+
+# Personal documentation (for development use only)
+frontend/MEDICAL_RAG_GLOSSARY.md
+PERSONAL_NOTES.md
+COMPONENT_REFERENCE.md
+**/personal_*.md
+**/*_glossary.md
+
+# Data files
+data/sample_documents/
+data/processed/
+*.csv
+*.pdf
+*.docx
+
+# Docker
+docker-compose.override.yml
+
+# Testing
+coverage/
+.nyc_output/
+test-results/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Database and Vector Store
+chroma_db/
+*.db
+*.sqlite
+*.sqlite3
+
+# Additional OS and Editor files
+*.swp
+*.swo
+.vscode/settings.json
+.idea/

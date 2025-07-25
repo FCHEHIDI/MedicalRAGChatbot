@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  # Backend Service
+  backend:
+    build:
+      context: ../backend
+      dockerfile: ../docker/Dockerfile.backend
+    container_name: medical-rag-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - DEBUG=true
+    env_file:
+      - ../.env
+    volumes:
+      - ../backend:/app
+      - ../data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - medical-rag-network
+
+  # Frontend Service
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: ../docker/Dockerfile.frontend
+    container_name: medical-rag-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+    restart: unless-stopped
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - medical-rag-network
+
+networks:
+  medical-rag-network:
+    driver: bridge
+
+volumes:
+  medical-data:
+    driver: local
