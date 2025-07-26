@@ -7,6 +7,23 @@ frontend/node_modules/
 frontend/.env
 frontend/.env.local
 
+# Python cache and compiled
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# ChromaDB and databases
+chroma_db/
+backend/chroma_db/
+*.db
+*.sqlite3
+
+# Models Cache
+models_cache/
+backend/models_cache/
+model_cache/
+
 # Virtual Environment
 .venv/
 venv/
@@ -18,6 +35,11 @@ env/
 .idea/
 *.swp
 *.swo
+
+# Deployment files
+deployment.zip
+medical-rag-chatbot.zip
+*.zip
 
 # OS
 .DS_Store
