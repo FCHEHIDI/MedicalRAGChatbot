@@ -11,6 +11,7 @@
 🎯 Portfolio-Ready AI/ML Project
 """
 
+from contextlib import asynccontextmanager
 import os
 import uvicorn
 from fastapi import FastAPI, HTTPException
@@ -18,6 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 
+from api.errors import RequestIDMiddleware, register_exception_handlers
 from domain import (
     RAGConfig,
     MedicalRAGSystem,
@@ -60,30 +62,13 @@ class DocumentRequest(BaseModel):
     category: Optional[str] = "general"
 
 
-# ============================================
-# 🚀 FASTAPI APPLICATION
-# ============================================
-app = FastAPI(
-    title="🏥 Medical RAG Chatbot",
-    description="Free AI-powered medical information assistant",
-    version="2.0.0",
-)
-
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Initialize RAG system
+# RAG singleton (initialized in lifespan)
 rag_system = None
 
 
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup/shutdown: load models and vector store."""
     global rag_system
     try:
         print("🔄 Starting RAG system initialization...")
@@ -91,7 +76,6 @@ async def startup_event():
 
         rag_system = MedicalRAGSystem()
 
-        # Add some initial medical knowledge if collection is empty
         print("🔍 Checking existing knowledge base...")
         collection_count = rag_system.collection.count()
         if collection_count == 0:
@@ -132,6 +116,34 @@ async def startup_event():
         print(f"❌ Startup error: {e}")
         print("💡 Check that Ollama is running: ollama serve")
 
+    yield
+
+    rag_system = None
+    print("🛑 RAG system shutdown complete")
+
+
+# ============================================
+# 🚀 FASTAPI APPLICATION
+# ============================================
+app = FastAPI(
+    title="🏥 Medical RAG Chatbot",
+    description="Free AI-powered medical information assistant",
+    version="2.0.0",
+    lifespan=lifespan,
+)
+
+# Outermost first: request id, then CORS
+app.add_middleware(RequestIDMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+register_exception_handlers(app)
+
 
 # ============================================
 # 🌐 API ENDPOINTS
@@ -159,45 +171,34 @@ async def health_check():
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    """Main chat endpoint"""
+    """Main chat endpoint — domain errors handled globally."""
     if not rag_system:
         raise HTTPException(status_code=503, detail="RAG system not initialized")
 
-    try:
-        knowledge = rag_system.search_knowledge(request.message)
-        response = rag_system.generate_response(
-            request.message,
-            knowledge["context"],
-        )
+    knowledge = rag_system.search_knowledge(request.message)
+    response = rag_system.generate_response(
+        request.message,
+        knowledge["context"],
+    )
 
-        return ChatResponse(
-            response=response,
-            conversation_id=request.conversation_id or "default",
-            sources=knowledge["sources"],
-        )
-
-    except RAGDomainError as e:
-        print(f"❌ Chat error: {e}")
-        raise HTTPException(status_code=500, detail="Chat processing failed") from e
-    except Exception as e:
-        print(f"❌ Chat error: {e}")
-        raise HTTPException(status_code=500, detail="Chat processing failed") from e
+    return ChatResponse(
+        response=response,
+        conversation_id=request.conversation_id or "default",
+        sources=knowledge["sources"],
+    )
 
 
 @app.post("/add-document")
 async def add_document(request: DocumentRequest):
-    """Add document to knowledge base"""
+    """Add document to knowledge base."""
     if not rag_system:
         raise HTTPException(status_code=503, detail="RAG system not initialized")
 
-    try:
-        return rag_system.add_document(
-            request.content,
-            request.title,
-            request.category or "general",
-        )
-    except RAGDomainError as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    return rag_system.add_document(
+        request.content,
+        request.title,
+        request.category or "general",
+    )
 
 
 @app.get("/knowledge-stats")
