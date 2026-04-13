@@ -5,6 +5,8 @@
 [![React](https://img.shields.io/badge/React-18+-blue.svg)](https://reactjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
 
+![MedicalRAGChatbot](chatbot_medical.png)
+
 ## Overview
 
 Production-ready Medical RAG (Retrieval-Augmented Generation) Chatbot showcasing advanced AI/ML engineering skills. Built with zero external API dependencies and optimized for sub-3-second response times.
