@@ -132,7 +132,15 @@ class MedicalRAGSystem:
         return getattr(self._llm, "_model", None)
 
     @property
+    def llm_ready(self) -> bool:
+        """True when the configured LLM adapter (Ollama or Groq) is usable."""
+        return self._llm.is_ready
+
+    @property
     def ollama_available(self) -> bool:
+        """True only when LLM_PROVIDER is ollama and the local model is ready."""
+        if self._config.LLM_PROVIDER != "ollama":
+            return False
         return self._llm.is_ready
 
     def count_documents(self) -> int:

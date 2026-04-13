@@ -12,6 +12,7 @@
 """
 
 from contextlib import asynccontextmanager
+import asyncio
 import os
 import uvicorn
 from fastapi import FastAPI, HTTPException
@@ -61,72 +62,91 @@ class DocumentRequest(BaseModel):
     category: Optional[str] = "general"
 
 
-# RAG singleton (initialized in lifespan)
+# RAG singleton (initialized in background after uvicorn binds — see lifespan)
 rag_system = None
+rag_bootstrap_task: Optional[asyncio.Task] = None
+
+
+def _sync_initialize_rag():
+    """Heavy init (embeddings, Chroma, seed docs) — runs in a thread so port 8000 opens immediately."""
+    from infra import build_default_rag_system
+
+    print("🔄 Starting RAG system initialization...")
+    print("⏳ This may take 2-5 minutes on first run (downloading models)...")
+
+    rs = build_default_rag_system()
+
+    print("🔍 Checking existing knowledge base...")
+    collection_count = rs.count_documents()
+    if collection_count == 0:
+        print("📚 Adding initial medical knowledge...")
+
+        initial_docs = [
+            {
+                "content": "Diabetes is a chronic condition that affects how your body turns food into energy. There are two main types: Type 1 (autoimmune) and Type 2 (insulin resistance). Management includes blood sugar monitoring, medication, diet control, and regular exercise.",
+                "title": "Diabetes Overview",
+                "category": "endocrinology",
+            },
+            {
+                "content": "Hypertension (high blood pressure) is often called the 'silent killer' because it usually has no symptoms. Normal blood pressure is less than 120/80 mmHg. Risk factors include age, family history, obesity, and lifestyle factors. Treatment may include lifestyle changes and medications.",
+                "title": "Hypertension Basics",
+                "category": "cardiology",
+            },
+            {
+                "content": "COVID-19 symptoms include fever, cough, shortness of breath, fatigue, body aches, headache, and loss of taste or smell. Seek medical attention if experiencing difficulty breathing, persistent chest pain, or confusion. Prevention includes vaccination, masking, and hand hygiene.",
+                "title": "COVID-19 Information",
+                "category": "infectious_disease",
+            },
+        ]
+
+        for doc in initial_docs:
+            rs.add_document(**doc)
+
+        print("✅ Initial medical knowledge added!")
+    else:
+        print(f"✅ Found {collection_count} existing documents in knowledge base")
+
+    return rs
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup/shutdown: load models and vector store."""
-    global rag_system
+    """Startup/shutdown: bind HTTP immediately; load RAG in a background task."""
+    global rag_system, rag_bootstrap_task
+
     if os.environ.get("TESTING") == "1":
         rag_system = None
+        rag_bootstrap_task = None
         print("⏭️ TESTING=1 — skipping RAG bootstrap")
         yield
         rag_system = None
         return
 
-    try:
-        print("🔄 Starting RAG system initialization...")
-        print("⏳ This may take 2-5 minutes on first run (downloading models)...")
+    async def _bootstrap():
+        global rag_system
+        try:
+            rs = await asyncio.to_thread(_sync_initialize_rag)
+            rag_system = rs
+            print("🎉 RAG system fully initialized and ready!")
+        except RAGDomainError as e:
+            print(f"❌ RAG init error: {e}")
+            print("💡 Check that Ollama is running: ollama serve")
+        except Exception as e:
+            print(f"❌ RAG init error: {e}")
+            print("💡 Check that Ollama is running: ollama serve")
 
-        from infra import build_default_rag_system
-
-        rag_system = build_default_rag_system()
-
-        print("🔍 Checking existing knowledge base...")
-        collection_count = rag_system.count_documents()
-        if collection_count == 0:
-            print("📚 Adding initial medical knowledge...")
-
-            initial_docs = [
-                {
-                    "content": "Diabetes is a chronic condition that affects how your body turns food into energy. There are two main types: Type 1 (autoimmune) and Type 2 (insulin resistance). Management includes blood sugar monitoring, medication, diet control, and regular exercise.",
-                    "title": "Diabetes Overview",
-                    "category": "endocrinology",
-                },
-                {
-                    "content": "Hypertension (high blood pressure) is often called the 'silent killer' because it usually has no symptoms. Normal blood pressure is less than 120/80 mmHg. Risk factors include age, family history, obesity, and lifestyle factors. Treatment may include lifestyle changes and medications.",
-                    "title": "Hypertension Basics",
-                    "category": "cardiology",
-                },
-                {
-                    "content": "COVID-19 symptoms include fever, cough, shortness of breath, fatigue, body aches, headache, and loss of taste or smell. Seek medical attention if experiencing difficulty breathing, persistent chest pain, or confusion. Prevention includes vaccination, masking, and hand hygiene.",
-                    "title": "COVID-19 Information",
-                    "category": "infectious_disease",
-                },
-            ]
-
-            for doc in initial_docs:
-                rag_system.add_document(**doc)
-
-            print("✅ Initial medical knowledge added!")
-        else:
-            print(f"✅ Found {collection_count} existing documents in knowledge base")
-
-        print("🎉 RAG system fully initialized and ready!")
-        print("🌐 Backend server is now accepting requests on http://localhost:8000")
-
-    except RAGDomainError as e:
-        print(f"❌ Startup error: {e}")
-        print("💡 Check that Ollama is running: ollama serve")
-    except Exception as e:
-        print(f"❌ Startup error: {e}")
-        print("💡 Check that Ollama is running: ollama serve")
-
+    print("🌐 API listening — RAG loading in background (GET /health for status)...")
+    rag_bootstrap_task = asyncio.create_task(_bootstrap())
     yield
 
+    if rag_bootstrap_task and not rag_bootstrap_task.done():
+        rag_bootstrap_task.cancel()
+        try:
+            await rag_bootstrap_task
+        except asyncio.CancelledError:
+            pass
     rag_system = None
+    rag_bootstrap_task = None
     print("🛑 RAG system shutdown complete")
 
 
@@ -166,14 +186,18 @@ async def root():
         "message": "🏥 Medical RAG Chatbot API",
         "status": "running",
         "version": "2.0.0",
-        "features": ["Ollama LLM", "ChromaDB", "Medical RAG"],
+        "features": ["Groq or Ollama LLM", "ChromaDB", "Medical RAG"],
     }
 
 
 @app.get("/health")
 async def health_check():
+    rag_loading = bool(rag_bootstrap_task and not rag_bootstrap_task.done())
     return {
         "status": "healthy",
+        "rag": "loading" if rag_loading else ("ready" if rag_system else "unavailable"),
+        "llm_provider": RAGConfig.LLM_PROVIDER,
+        "llm": "connected" if rag_system and rag_system.llm_ready else "disconnected",
         "ollama": "connected" if rag_system and rag_system.ollama_available else "disconnected",
         "chromadb": "connected" if rag_system and rag_system.collection else "disconnected",
     }

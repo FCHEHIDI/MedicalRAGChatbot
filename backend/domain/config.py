@@ -4,13 +4,20 @@ import os
 
 
 class RAGConfig:
-    OLLAMA_HOST = "http://localhost:11434"
+    # LLM: ollama (local) | groq (cloud, OpenAI-compatible API)
+    LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "ollama").strip().lower()
+    GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
+    GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
+
+    OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434").strip()
     OLLAMA_MODEL = "llama3.2:1b"
 
-    CHROMADB_PATH = "./chroma_db"
+    CHROMADB_PATH = os.environ.get("CHROMADB_PATH", "./chroma_db")
     COLLECTION_NAME = "medical_knowledge"
 
-    EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+    # Hugging Face / sentence-transformers (1er run = téléchargement + chargement CPU)
+    EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+    EMBEDDING_CACHE_FOLDER = os.environ.get("EMBEDDING_CACHE_FOLDER", "./models_cache")
 
     TOP_K_RESULTS = 3
     MAX_CONTEXT_LENGTH = 1000

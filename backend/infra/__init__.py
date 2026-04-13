@@ -3,23 +3,36 @@
 from domain.ports import EmbeddingsPort, LLMPort, VectorStorePort
 
 from .chroma_vector_store import ChromaVectorStore
-from .lcel_medical_rag import build_langchain_chroma, build_medical_lcel_chain
+from .lcel_medical_rag import (
+    build_groq_chat_model,
+    build_langchain_chroma,
+    build_medical_lcel_chain,
+    build_ollama_chat_model,
+)
 from .ollama_llm import OllamaLLM
 from .sentence_transformers_embeddings import SentenceTransformersEmbeddings
 
 
 def build_default_rag_system():
-    """Wire default Chroma + sentence-transformers + Ollama + LCEL chain."""
+    """Wire Chroma + sentence-transformers + LLM (Ollama local ou Groq cloud) + LCEL."""
     from domain.config import RAGConfig
     from domain.rag_system import MedicalRAGSystem
 
     config = RAGConfig
     vector_store = ChromaVectorStore(config)
     embeddings = SentenceTransformersEmbeddings(config)
-    llm = OllamaLLM(config)
+    lc_vs = build_langchain_chroma(embeddings, config, chroma_client=vector_store.chromadb_client)
 
-    lc_vs = build_langchain_chroma(embeddings, config)
-    lcel_chain = build_medical_lcel_chain(lc_vs, llm, config)
+    if config.LLM_PROVIDER == "groq":
+        from .groq_llm import GroqLLM
+
+        llm: LLMPort = GroqLLM(config)
+        chat = build_groq_chat_model(config)
+        lcel_chain = build_medical_lcel_chain(lc_vs, config, chat_model=chat)
+    else:
+        llm = OllamaLLM(config)
+        chat = build_ollama_chat_model(llm, config)
+        lcel_chain = build_medical_lcel_chain(lc_vs, config, chat_model=chat)
 
     return MedicalRAGSystem(
         vector_store=vector_store,
@@ -40,4 +53,6 @@ __all__ = [
     "build_default_rag_system",
     "build_langchain_chroma",
     "build_medical_lcel_chain",
+    "build_ollama_chat_model",
+    "build_groq_chat_model",
 ]

@@ -10,6 +10,7 @@ from typing import Any, Type
 
 from langchain_community.chat_models import ChatOllama
 from langchain_community.vectorstores import Chroma
+from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable, RunnableLambda, RunnablePassthrough
@@ -27,9 +28,17 @@ def _format_docs(docs: list[Any]) -> str:
 def build_langchain_chroma(
     embeddings_port: EmbeddingsPort,
     config: Type[RAGConfig] = RAGConfig,
+    *,
+    chroma_client: Any | None = None,
 ) -> Chroma:
-    """Attach to the same persisted collection as ChromaVectorStore."""
+    """Réutilise le PersistentClient de ChromaVectorStore si fourni (sinon conflit singleton LangChain)."""
     adapter = EmbeddingsPortAdapter(embeddings_port)
+    if chroma_client is not None:
+        return Chroma(
+            client=chroma_client,
+            collection_name=config.COLLECTION_NAME,
+            embedding_function=adapter,
+        )
     return Chroma(
         collection_name=config.COLLECTION_NAME,
         persist_directory=config.CHROMADB_PATH,
@@ -37,21 +46,47 @@ def build_langchain_chroma(
     )
 
 
+def build_ollama_chat_model(llm_port: OllamaLLM, config: Type[RAGConfig] = RAGConfig) -> ChatOllama | None:
+    """ChatOllama for LCEL when LLM_PROVIDER=ollama."""
+    if not llm_port.is_ready or not llm_port._model:
+        return None
+    return ChatOllama(
+        model=llm_port._model,
+        base_url=config.OLLAMA_HOST,
+        temperature=0.2,
+        timeout=int(config.LLM_TIMEOUT_SECONDS),
+    )
+
+
+def build_groq_chat_model(config: Type[RAGConfig] = RAGConfig) -> BaseChatModel | None:
+    """ChatGroq for LCEL when LLM_PROVIDER=groq."""
+    if not config.GROQ_API_KEY:
+        return None
+    try:
+        from langchain_groq import ChatGroq
+    except ImportError:
+        print("⚠️ langchain-groq not installed — pip install langchain-groq")
+        return None
+    return ChatGroq(
+        model_name=config.GROQ_MODEL,
+        groq_api_key=config.GROQ_API_KEY,
+        temperature=0.2,
+        request_timeout=int(config.LLM_TIMEOUT_SECONDS),
+    )
+
+
 def build_medical_lcel_chain(
     lc_vectorstore: Chroma,
-    llm_port: OllamaLLM,
-    config: Type[RAGConfig] = RAGConfig,
+    config: Type[RAGConfig],
+    *,
+    chat_model: BaseChatModel | None,
 ) -> Runnable | None:
     """
-    LCEL: assign context via retriever → ChatPrompt → ChatOllama → StrOutputParser.
-    Returns None if no Ollama model is available.
+    LCEL: retriever | prompt | BaseChatModel | StrOutputParser (Ollama ou Groq).
     """
-    if not llm_port.is_ready:
-        print("⚠️ LCEL chain skipped — Ollama model not available")
+    if chat_model is None:
+        print("⚠️ LCEL chain skipped — no chat model")
         return None
-
-    model = llm_port._model
-    assert model is not None
 
     retriever = lc_vectorstore.as_retriever(
         search_kwargs={"k": config.TOP_K_RESULTS},
@@ -75,21 +110,14 @@ def build_medical_lcel_chain(
         ]
     )
 
-    llm = ChatOllama(
-        model=model,
-        base_url=config.OLLAMA_HOST,
-        temperature=0.2,
-        timeout=int(config.LLM_TIMEOUT_SECONDS),
-    )
-
     chain: Runnable = (
         RunnablePassthrough.assign(
             context=itemgetter("question") | retriever | RunnableLambda(_format_docs)
         )
         | prompt
-        | llm
+        | chat_model
         | StrOutputParser()
     )
 
-    print("✅ LCEL medical RAG chain ready (retriever | prompt | ChatOllama | StrOutputParser)")
+    print("✅ LCEL medical RAG chain ready (retriever | prompt | chat LLM | StrOutputParser)")
     return chain

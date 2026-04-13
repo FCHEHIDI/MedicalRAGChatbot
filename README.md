@@ -1,223 +1,73 @@
-# Medical RAG Chatbot - AI/ML Engineering Portfolio
+# Medical RAG Chatbot
 
-[![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com/)
-[![React](https://img.shields.io/badge/React-18+-blue.svg)](https://reactjs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
+Assistant médical (RAG) : **React** + **FastAPI** + **ChromaDB** + **Sentence-Transformers** + **LLM** (**Ollama** en local ou **Groq** en cloud, voir `LLM_PROVIDER`).
 
-## Overview
+## Prérequis
 
-Production-ready Medical RAG (Retrieval-Augmented Generation) Chatbot showcasing advanced AI/ML engineering skills. Built with zero external API dependencies and optimized for sub-3-second response times.
+- Python **3.11+**
+- Node.js **18+**
+- [Ollama](https://ollama.com/) si `LLM_PROVIDER=ollama` (ex. `ollama pull llama3.2:1b`)
+- Compte [Groq](https://console.groq.com/) si `LLM_PROVIDER=groq`
 
-**Key Highlights:**
-- 🤖 Local LLM Integration (Ollama llama3.2:3b)
-- 🗄️ Vector Database (ChromaDB with persistent storage)
-- ⚡ High Performance (2.4s average response time)
-- 🔒 Privacy-First (100% local processing, HIPAA-compliant)
-- 🏗️ Clean Architecture (SOLID principles, type-safe)
+## Installation
 
-## Technical Skills Demonstrated
+À la racine du dépôt :
 
-### AI/ML Engineering
-- Retrieval-Augmented Generation (RAG) Implementation
-- Vector Embeddings & Semantic Search (SentenceTransformers)
-- Local LLM Integration & Optimization (Ollama)
-- Document Processing & Chunking Strategies
-- Context Window Management & Prompt Engineering
-
-### MLOps & Infrastructure
-- Model Serving & API Development (FastAPI)
-- Vector Database Management (ChromaDB)
-- Container Deployment (Docker)
-- Health Monitoring & Logging
-- Async Processing & Concurrent Request Handling
-
-### Data Engineering
-- Multi-format Document Ingestion (PDF, MD, JSON, TXT)
-- Text Preprocessing & Normalization
-- Embedding Generation & Storage Optimization
-- Metadata Management & Source Attribution
-
-## Architecture
-
-```
-Frontend (React + TypeScript + Material-UI)
-    ↓
-Backend API (FastAPI + Pydantic)
-    ↓
-AI Pipeline: Query → Embeddings → Vector Search → Context → LLM → Response
-    ↓
-Infrastructure (ChromaDB + Ollama + SentenceTransformers)
-```
-
-## Performance Metrics
-
-| Component | Performance | Optimization |
-|-----------|-------------|--------------|
-| Vector Search | 15ms | ⭐⭐⭐⭐⭐ |
-| Embedding Generation | 78ms | ⭐⭐⭐⭐⭐ |
-| LLM Inference | 2.3s | ⭐⭐⭐⭐ |
-| **End-to-End** | **2.4s** | ⭐⭐⭐⭐⭐ |
-
-**Scalability:**
-- Peak Throughput: 325 queries/minute
-- Concurrent Users: 25+ simultaneous connections
-- Memory Usage: ~3GB (highly optimized)
-- CPU Utilization: 15-30% average
-
-## Quick Start
-
-### Prerequisites
-- Python 3.9+
-- Node.js 18+
-- Ollama
-
-### Setup
 ```bash
-# 1. Clone and setup environment
-git clone <repository-url>
-cd MedicalRAGChatbot
-cp config/.env.example .env
-
-# 2. Backend setup
-cd backend
 pip install -r requirements.txt
-ollama serve
-ollama pull llama3.2:3b
-python ../config/populate_medical_data.py
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
-
-# 3. Frontend setup (new terminal)
-cd frontend
-npm install
-npm start
+pip install -r requirements-dev.txt   # optionnel : tests
+cd frontend && npm install && cd ..
 ```
 
-### Docker Alternative
+## Lancer en local
+
+**Option A — deux terminaux**
+
+1. Backend (depuis `backend/`, venv activé) : `python main.py` → [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)  
+2. Frontend : `cd frontend && npm start` → [http://localhost:3000](http://localhost:3000)
+
+**Option B — Windows**
+
+```powershell
+.\scripts\start-dev.ps1
+```
+
+Ne pas définir `TESTING=1` pour un run normal (sinon le RAG ne s’initialise pas).
+
+## Tests
+
 ```bash
-docker-compose up --build
+pytest tests/
 ```
 
-## Project Structure
+## Structure utile
 
 ```
 MedicalRAGChatbot/
-├── backend/                 # FastAPI application
-│   ├── main.py             # API endpoints
-│   ├── rag_engine.py       # Core RAG implementation
-│   └── requirements.txt    # Dependencies
-├── frontend/               # React TypeScript application
-│   ├── src/components/     # UI components
-│   └── package.json        # Dependencies
-├── config/                 # Setup scripts & configuration
-├── tests/                  # Test suite
-├── sample_data/           # Medical knowledge base
-└── docker-compose.yml     # Container orchestration
+├── backend/           # API FastAPI (domain/, infra/, api/, resilience/)
+├── frontend/          # React (CRA + TypeScript)
+├── tests/             # Pytest
+├── scripts/           # start-dev.ps1 / start-dev.sh
+├── .github/workflows/ # CI/CD ECS
+├── Dockerfile
+├── requirements.txt
+├── requirements-dev.txt
+├── .env.example
+└── pyproject.toml
 ```
 
-## Key Features
+## Variables d’environnement
 
-**AI/ML Capabilities:**
-- RAG Pipeline with document retrieval + LLM generation
-- Semantic search with vector similarity matching
-- Transparent source attribution with citations
-- Medical safety with automated disclaimers
+Voir `.env.example` (`LLM_PROVIDER`, `GROQ_API_KEY`, etc.).
 
-**Engineering Excellence:**
-- Type safety (TypeScript + Pydantic)
-- Async architecture for non-blocking requests
-- Comprehensive error handling with graceful degradation
-- Health monitoring with system status endpoints
+## Déploiement (Docker & AWS ECS)
 
-**Production Ready:**
-- CORS configuration for secure requests
-- Input validation and sanitization
-- Structured JSON logging
-- Auto-generated API documentation
+- Image : `Dockerfile` à la racine (Python 3.11-slim, port **8000**).
+- Build local : `docker build -t medical-rag .` puis `docker run -p 8000:8000 --env-file .env medical-rag`
+- CI/CD : push sur **`main`** → workflow `.github/workflows/deploy.yml` (build → ECR → `ecs update-service`).  
+  Secrets GitHub : `AWS_REGION`, `ECR_REGISTRY`, `ECR_REPOSITORY`, `ECS_CLUSTER`, `ECS_SERVICE`, et **identifiants IAM** `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` pour l’étape AWS CLI (ou remplacer par OIDC selon ton compte).
 
-## Technical Achievements
+## Notes
 
-| Metric | Achievement | Industry Standard |
-|--------|-------------|------------------|
-| Response Time | 2.4s average | 8-25s |
-| Throughput | 325 QPS | 50-100 QPS |
-| Memory Efficiency | 3GB total | 8GB+ |
-| Setup Time | 30 minutes | Days/Weeks |
-| Cost | $0/month | $2,000-5,000/month |
-
-## Core Implementation
-
-```python
-class FreeRAGEngine:
-    def __init__(self):
-        self.embeddings = SentenceTransformer('all-MiniLM-L6-v2')
-        self.vector_store = ChromaVectorStore()
-        self.llm_client = OllamaClient()
-    
-    async def search_and_generate(self, query: str) -> RAGResponse:
-        # Multi-stage retrieval with relevance scoring
-        embeddings = await self.embeddings.encode(query)
-        contexts = await self.vector_store.similarity_search(
-            embeddings, top_k=5, threshold=0.7
-        )
-        
-        # Context optimization and prompt engineering
-        prompt = self.build_medical_prompt(query, contexts)
-        response = await self.llm_client.generate(prompt)
-        
-        return RAGResponse(
-            content=response,
-            sources=contexts,
-            confidence_score=self.calculate_confidence(contexts)
-        )
-```
-
-## Testing & Validation
-
-```bash
-# Run test suite
-cd tests && python test_medical_rag.py
-
-# API testing
-curl http://localhost:8000/health
-curl -X POST "http://localhost:8000/chat" \
-  -H "Content-Type: application/json" \
-  -d '{"message": "What are the symptoms of chest pain?"}'
-
-# Performance testing
-ab -n 100 -c 10 -T 'application/json' \
-  -p tests/sample_query.json http://localhost:8000/chat
-```
-
-## Future Enhancements
-
-**Phase 1: Advanced AI**
-- Multi-modal input (images, PDFs)
-- Fine-tuned medical embeddings
-- Advanced NER for medical entities
-
-**Phase 2: MLOps**
-- Model versioning and A/B testing
-- Performance monitoring and alerts
-- Automated retraining pipelines
-
-**Phase 3: Enterprise**
-- User authentication and profiles
-- Multi-tenant architecture
-- Advanced analytics dashboard
-
-## Contact
-
-**Fares Chehidi** - AI/ML Engineering Portfolio
-
-- 📧 Email: [fareschehidi7@gmail.com](mailto:fareschehidi7@gmail.com)
-- 💼 LinkedIn: [Fares Chehidi](https://www.linkedin.com/in/fares-chehidi-89a31333a)
-- 💻 GitHub: [FCHEHIDI](https://github.com/FCHEHIDI)
-
-## License
-
-MIT License - see [LICENSE](LICENSE) file for details.
-
----
-
-*This project demonstrates advanced AI/ML engineering capabilities including RAG implementation, vector databases, local LLM integration, and production-ready full-stack development.*
+- Premier démarrage : téléchargement du modèle d’embeddings (Hugging Face) — peut prendre plusieurs minutes. Voir `docs/WARMUP_REPORT.md`.
+- Variables utiles : `EMBEDDING_MODEL`, `EMBEDDING_CACHE_FOLDER`, `CHROMADB_PATH` (voir `backend/domain/config.py`).
