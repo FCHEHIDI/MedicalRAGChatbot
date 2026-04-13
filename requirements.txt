@@ -1,10 +1,27 @@
-# 🏥 MEDICAL RAG CHATBOT - AZURE DEPLOYMENT
-# Simple, clean, production-ready
+# Medical RAG Chatbot — Python 3.11+
+# API + LangChain 0.3.x + Chroma / FAISS + embeddings + Ollama
 
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-sentence-transformers==2.2.2
-chromadb==0.4.15
-pydantic==2.5.0
-numpy==1.24.3
-psutil==5.9.6
+# --- Web ---
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+pydantic==2.10.4
+pydantic-settings==2.10.1
+httpx==0.28.1
+prometheus-client==0.21.1
+
+# --- LangChain 0.3.x (aligned) ---
+langchain==0.3.28
+langchain-core==0.3.84
+langchain-community==0.3.28
+langchain-text-splitters==0.3.11
+
+# --- Vector stores & embeddings ---
+chromadb==0.5.23
+faiss-cpu==1.9.0.post1
+sentence-transformers==3.3.1
+
+# --- Local LLM (client; ollama>=0.6 supports httpx 0.28.x) ---
+ollama==0.6.1
+
+# --- Resilience (explicit; also used by LangChain) ---
+tenacity==8.5.0
