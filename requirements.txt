@@ -23,5 +23,9 @@ sentence-transformers==3.3.1
 # --- Local LLM (client; ollama>=0.6 supports httpx 0.28.x) ---
 ollama==0.6.1
 
+# --- Cloud LLM (ECS / Fargate — LLM_PROVIDER=groq) ---
+groq==0.18.0
+langchain-groq==0.2.4
+
 # --- Resilience (explicit; also used by LangChain) ---
 tenacity==8.5.0

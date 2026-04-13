@@ -108,6 +108,9 @@ docker-compose.override.yml
 
 # Testing
 coverage/
+htmlcov/
+.pytest_cache/
+*.egg-info/
 .nyc_output/
 test-results/
 

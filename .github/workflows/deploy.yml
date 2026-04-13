@@ -1,0 +1,58 @@
+# Déploiement : build Docker → push Amazon ECR → mise à jour du service ECS Fargate
+#
+# Secrets GitHub requis (Settings → Secrets and variables → Actions) :
+#   AWS_REGION, ECR_REGISTRY, ECR_REPOSITORY, ECS_CLUSTER, ECS_SERVICE
+# Pour l’authentification AWS (ECR + ECS), ajouter aussi l’un des deux :
+#   - AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY (utilisateur IAM avec droits ECR/ECS), ou
+#   - OIDC : permissions id-token + secret AWS_ROLE_ARN (voir doc aws-actions/configure-aws-credentials)
+
+name: Deploy to AWS ECS (Fargate)
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+  ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ secrets.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Login to Amazon ECR
+        run: |
+          aws ecr get-login-password --region "${{ secrets.AWS_REGION }}" \
+            | docker login --username AWS --password-stdin "${{ secrets.ECR_REGISTRY }}"
+
+      - name: Build, tag, and push image to Amazon ECR
+        run: |
+          IMAGE_URI="${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}"
+          docker build -t "$IMAGE_URI:$IMAGE_TAG" -t "$IMAGE_URI:latest" .
+          docker push "$IMAGE_URI:$IMAGE_TAG"
+          docker push "$IMAGE_URI:latest"
+
+      - name: Deploy Amazon ECS service
+        run: |
+          aws ecs update-service \
+            --region "${{ secrets.AWS_REGION }}" \
+            --cluster "${{ secrets.ECS_CLUSTER }}" \
+            --service "${{ secrets.ECS_SERVICE }}" \
+            --force-new-deployment \
+            --no-cli-pager
