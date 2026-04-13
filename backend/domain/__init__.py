@@ -1,18 +1,19 @@
-"""Domain layer: RAG pipeline and configuration (no FastAPI)."""
+"""Domain layer: RAG pipeline, config, ports (no FastAPI)."""
 
 from exceptions.domain import (
+    DocumentNotFoundError,
+    EmbeddingError,
     RAGDomainError,
     RAGException,
-    EmbeddingError,
-    DocumentNotFoundError,
 )
 
+from .config import RAGConfig
+from .ports import EmbeddingsPort, LLMPort, VectorStorePort
 from .rag_system import (
-    RAGConfig,
+    OLLAMA_AVAILABLE,
     MedicalRAGSystem,
     cleanup_memory,
     get_memory_usage,
-    OLLAMA_AVAILABLE,
 )
 
 __all__ = [
@@ -25,4 +26,7 @@ __all__ = [
     "RAGException",
     "EmbeddingError",
     "DocumentNotFoundError",
+    "VectorStorePort",
+    "EmbeddingsPort",
+    "LLMPort",
 ]

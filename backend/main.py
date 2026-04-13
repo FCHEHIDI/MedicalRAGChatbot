@@ -22,11 +22,11 @@ from typing import List, Optional
 from api.errors import RequestIDMiddleware, register_exception_handlers
 from domain import (
     RAGConfig,
-    MedicalRAGSystem,
     cleanup_memory,
     get_memory_usage,
     RAGDomainError,
 )
+from infra import build_default_rag_system
 
 # ============================================
 # 🗂️ PYDANTIC MODELS
@@ -74,10 +74,10 @@ async def lifespan(app: FastAPI):
         print("🔄 Starting RAG system initialization...")
         print("⏳ This may take 2-5 minutes on first run (downloading models)...")
 
-        rag_system = MedicalRAGSystem()
+        rag_system = build_default_rag_system()
 
         print("🔍 Checking existing knowledge base...")
-        collection_count = rag_system.collection.count()
+        collection_count = rag_system.count_documents()
         if collection_count == 0:
             print("📚 Adding initial medical knowledge...")
 
@@ -164,7 +164,7 @@ async def root():
 async def health_check():
     return {
         "status": "healthy",
-        "ollama": "connected" if rag_system and rag_system.ollama_client else "disconnected",
+        "ollama": "connected" if rag_system and rag_system.ollama_available else "disconnected",
         "chromadb": "connected" if rag_system and rag_system.collection else "disconnected",
     }
 
@@ -208,7 +208,7 @@ async def knowledge_stats():
         raise HTTPException(status_code=503, detail="RAG system not initialized")
 
     try:
-        count = rag_system.collection.count()
+        count = rag_system.count_documents()
         return {
             "total_documents": count,
             "status": "ready" if count > 0 else "empty",

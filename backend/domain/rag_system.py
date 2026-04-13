@@ -1,5 +1,5 @@
 """
-Medical RAG pipeline: vector store, embeddings, optional Ollama generation.
+Medical RAG pipeline: orchestrates injected vector store, embeddings, and LLM ports.
 No FastAPI / HTTP — domain exceptions only.
 """
 
@@ -7,23 +7,18 @@ from __future__ import annotations
 
 import gc
 import sys
-from typing import Any, List
-
-import chromadb
-from chromadb.config import Settings
-from sentence_transformers import SentenceTransformer
-
-from exceptions.domain import EmbeddingError, RAGException
+from typing import Any, List, Type
 
 try:
-    import ollama
+    import ollama  # noqa: F401
 
     OLLAMA_AVAILABLE = True
-    print("✅ Ollama library imported successfully")
 except ImportError:
-    ollama = None  # type: ignore[assignment, unused-ignore]
     OLLAMA_AVAILABLE = False
-    print("⚠️ Ollama not available - will use fallback mode")
+
+from domain.config import RAGConfig
+from domain.ports import EmbeddingsPort, LLMPort, VectorStorePort
+from exceptions.domain import RAGException
 
 # --- Memory helpers (shared with API for /memory-status) ---
 
@@ -84,133 +79,60 @@ def get_memory_usage() -> dict[str, Any]:
         return {"error": str(e)}
 
 
-# --- Configuration ---
-
-
-class RAGConfig:
-    OLLAMA_HOST = "http://localhost:11434"
-    OLLAMA_MODEL = "llama3.2:1b"
-
-    CHROMADB_PATH = "./chroma_db"
-    COLLECTION_NAME = "medical_knowledge"
-
-    EMBEDDING_MODEL = "all-MiniLM-L6-v2"
-
-    TOP_K_RESULTS = 3
-    MAX_CONTEXT_LENGTH = 1000
-    BATCH_SIZE = 1
-
-    CLEANUP_FREQUENCY = 10
-    MAX_CACHE_SIZE = 50
-
-
 # --- Core RAG ---
 
 
 class MedicalRAGSystem:
     """Single responsibility: run the medical RAG pipeline (retrieve + generate)."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        vector_store: VectorStorePort,
+        embeddings: EmbeddingsPort,
+        llm: LLMPort,
+        *,
+        config: Type[RAGConfig] = RAGConfig,
+    ) -> None:
         print("🚀 Initializing Memory-Optimized Medical RAG System...")
+        self._vector_store = vector_store
+        self._embeddings = embeddings
+        self._llm = llm
+        self._config = config
         self.request_count = 0
-        self.setup_chromadb()
-        self.setup_embeddings()
-        self.setup_ollama()
 
         cleanup_memory()
         memory_info = get_memory_usage()
         print(f"💾 Initial Memory: {memory_info}")
         print("✅ Medical RAG System ready with memory optimization!")
 
-    def setup_chromadb(self) -> None:
-        try:
-            settings = Settings(
-                anonymized_telemetry=False,
-                allow_reset=True,
-            )
-            self.chroma_client = chromadb.PersistentClient(
-                path=RAGConfig.CHROMADB_PATH,
-                settings=settings,
-            )
-            self.collection = self.chroma_client.get_or_create_collection(
-                name=RAGConfig.COLLECTION_NAME,
-                metadata={
-                    "description": "Free medical RAG knowledge base",
-                    "hnsw:space": "cosine",
-                    "hnsw:batch_size": 100,
-                    "hnsw:sync_threshold": 1000,
-                },
-            )
-            print("✅ ChromaDB initialized with memory optimization!")
-        except Exception as e:
-            print(f"❌ ChromaDB setup error: {e}")
-            raise RAGException("Database initialization failed") from e
+    @property
+    def collection(self) -> Any:
+        """Backward compatibility: Chroma collection object when using ChromaVectorStore."""
+        return getattr(self._vector_store, "collection", None)
 
-    def setup_embeddings(self) -> None:
-        try:
-            print("📚 Loading embedding model with memory optimization...")
-            print(f"🔄 Downloading {RAGConfig.EMBEDDING_MODEL} (first time may take 2-3 minutes)...")
-            self.embedding_model = SentenceTransformer(
-                RAGConfig.EMBEDDING_MODEL,
-                cache_folder="./models_cache",
-                device="cpu",
-            )
-            if hasattr(self.embedding_model, "_modules"):
-                gc.collect()
-            print("✅ Embedding model loaded with memory optimization!")
-        except Exception as e:
-            print(f"❌ Embedding setup error: {e}")
-            raise EmbeddingError("Embedding model initialization failed") from e
+    @property
+    def ollama_client(self) -> Any:
+        """Backward compatibility for /health (optional client handle)."""
+        return getattr(self._llm, "_client", None)
 
-    def setup_ollama(self) -> None:
-        if not OLLAMA_AVAILABLE:
-            print("⚠️ Ollama not installed - using fallback mode")
-            self.ollama_client = None
-            self.ollama_model = None
-            return
+    @property
+    def ollama_model(self) -> Any:
+        return getattr(self._llm, "_model", None)
 
-        try:
-            assert ollama is not None
-            self.ollama_client = ollama.Client(host=RAGConfig.OLLAMA_HOST)
-            try:
-                models = self.ollama_client.list()
-                available_models = [model["name"] for model in models["models"]]
-                print(f"📦 Available Ollama models: {available_models}")
+    @property
+    def ollama_available(self) -> bool:
+        return self._llm.is_ready
 
-                if "llama3.2:3b" in available_models:
-                    self.ollama_model = "llama3.2:3b"
-                elif "llama3.2:1b" in available_models:
-                    self.ollama_model = "llama3.2:1b"
-                else:
-                    print("⚠️ No models found - will use fallback responses")
-                    self.ollama_model = None
-
-                if self.ollama_model:
-                    print(f"🤖 Using Ollama model: {self.ollama_model}")
-
-            except Exception as model_error:
-                print(f"⚠️ Model setup issue: {model_error}")
-                print("🔄 Using fallback mode instead")
-                self.ollama_model = None
-
-        except Exception as e:
-            print(f"❌ Ollama connection failed: {e}")
-            print("🔄 Using fallback mode - RAG will still work!")
-            self.ollama_client = None
-            self.ollama_model = None
+    def count_documents(self) -> int:
+        return self._vector_store.count()
 
     def add_document(self, content: str, title: str, category: str = "general") -> dict[str, Any]:
         try:
-            embedding = self.embedding_model.encode(
-                [content],
-                convert_to_tensor=False,
-                normalize_embeddings=True,
-                batch_size=1,
-            )[0].tolist()
+            embedding = self._embeddings.encode_text(content)
 
             doc_id = f"{category}_{title}_{hash(content) % 10000}"
 
-            self.collection.add(
+            self._vector_store.add(
                 embeddings=[embedding],
                 documents=[content],
                 metadatas=[
@@ -235,19 +157,15 @@ class MedicalRAGSystem:
             raise RAGException("Failed to add document") from e
 
     def search_knowledge(
-        self, query: str, n_results: int = RAGConfig.TOP_K_RESULTS
+        self, query: str, n_results: int | None = None
     ) -> dict[str, Any]:
+        n = n_results if n_results is not None else self._config.TOP_K_RESULTS
         try:
-            query_embedding = self.embedding_model.encode(
-                [query],
-                convert_to_tensor=False,
-                normalize_embeddings=True,
-                batch_size=1,
-            )[0].tolist()
+            query_embedding = self._embeddings.encode_text(query)
 
-            results = self.collection.query(
-                query_embeddings=[query_embedding],
-                n_results=n_results,
+            results = self._vector_store.query(
+                query_embedding,
+                n_results=n,
                 include=["documents", "metadatas", "distances"],
             )
 
@@ -290,7 +208,7 @@ class MedicalRAGSystem:
     def generate_response(self, query: str, context: str) -> str:
         self.request_count += 1
 
-        if self.request_count % RAGConfig.CLEANUP_FREQUENCY == 0:
+        if self.request_count % self._config.CLEANUP_FREQUENCY == 0:
             cleanup_memory()
             print(f"🧹 Periodic cleanup after {self.request_count} requests")
 
@@ -307,21 +225,11 @@ Question: {query}
 
 Please provide a helpful, accurate response based on the context above:"""
 
-        if OLLAMA_AVAILABLE and self.ollama_client and self.ollama_model:
-            try:
-                response = self.ollama_client.chat(
-                    model=self.ollama_model,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": prompt},
-                    ],
-                )
-                del system_prompt, prompt
-                gc.collect()
-                return response["message"]["content"]
-            except Exception as e:
-                print(f"❌ Ollama generation error: {e}")
-                print("🔄 Falling back to simple response...")
+        generated = self._llm.generate(system_prompt, prompt)
+        if generated is not None:
+            del system_prompt, prompt
+            gc.collect()
+            return generated
 
         if context.strip():
             fallback_response = f"""Based on the medical information in our knowledge base:
