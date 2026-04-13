@@ -27,8 +27,6 @@ from domain import (
     get_memory_usage,
     RAGDomainError,
 )
-from infra import build_default_rag_system
-
 # ============================================
 # 🗂️ PYDANTIC MODELS
 # ============================================
@@ -71,9 +69,18 @@ rag_system = None
 async def lifespan(app: FastAPI):
     """Startup/shutdown: load models and vector store."""
     global rag_system
+    if os.environ.get("TESTING") == "1":
+        rag_system = None
+        print("⏭️ TESTING=1 — skipping RAG bootstrap")
+        yield
+        rag_system = None
+        return
+
     try:
         print("🔄 Starting RAG system initialization...")
         print("⏳ This may take 2-5 minutes on first run (downloading models)...")
+
+        from infra import build_default_rag_system
 
         rag_system = build_default_rag_system()
 
