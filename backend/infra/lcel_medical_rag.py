@@ -79,6 +79,7 @@ def build_medical_lcel_chain(
         model=model,
         base_url=config.OLLAMA_HOST,
         temperature=0.2,
+        timeout=int(config.LLM_TIMEOUT_SECONDS),
     )
 
     chain: Runnable = (

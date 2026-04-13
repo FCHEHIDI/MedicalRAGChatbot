@@ -19,6 +19,9 @@ except ImportError:
 from domain.config import RAGConfig
 from domain.ports import EmbeddingsPort, LLMPort, VectorStorePort
 from exceptions.domain import RAGException
+from resilience.circuit_breaker import SimpleCircuitBreaker
+from resilience.exceptions import CircuitOpenError
+from resilience.sync_call import resilient_sync
 
 # --- Memory helpers (shared with API for /memory-status) ---
 
@@ -100,6 +103,13 @@ class MedicalRAGSystem:
         self._llm = llm
         self._config = config
         self._lcel_chain = lcel_chain
+        self._lcel_breaker: SimpleCircuitBreaker | None = None
+        if lcel_chain is not None:
+            self._lcel_breaker = SimpleCircuitBreaker(
+                "lcel_chain",
+                failure_threshold=config.CIRCUIT_FAILURE_THRESHOLD,
+                recovery_seconds=config.CIRCUIT_RECOVERY_SECONDS,
+            )
         self.request_count = 0
 
         cleanup_memory()
@@ -215,9 +225,25 @@ class MedicalRAGSystem:
             print(f"🧹 Periodic cleanup after {self.request_count} requests")
 
         # LangChain 0.3+ LCEL: retriever | prompt | llm | StrOutputParser (no .run() / LLMChain)
-        if self._lcel_chain is not None and self._llm.is_ready:
+        if self._lcel_chain is not None and self._llm.is_ready and self._lcel_breaker is not None:
             try:
-                return self._lcel_chain.invoke({"question": query})
+
+                def _lcel_invoke() -> str:
+                    return self._lcel_chain.invoke({"question": query})
+
+                return resilient_sync(
+                    "lcel_invoke",
+                    self._lcel_breaker,
+                    _lcel_invoke,
+                    timeout_sec=self._config.LLM_TIMEOUT_SECONDS * 2,
+                    max_attempts=self._config.LLM_RETRY_MAX,
+                    min_wait=self._config.LLM_RETRY_MIN_WAIT,
+                    max_wait=self._config.LLM_RETRY_MAX_WAIT,
+                )
+            except CircuitOpenError:
+                print("⚠️ LCEL circuit open — falling back to direct LLM / template response...")
+            except TimeoutError:
+                print("⚠️ LCEL invoke timed out — falling back...")
             except Exception as e:
                 print(f"❌ LCEL generation error: {e}")
                 print("🔄 Falling back to direct LLM / template response...")

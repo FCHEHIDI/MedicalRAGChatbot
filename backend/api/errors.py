@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from exceptions.domain import RAGDomainError
+from resilience.context import request_id_ctx
 
 logger = logging.getLogger("medical_rag.api")
 
@@ -33,9 +34,13 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         incoming = request.headers.get(REQUEST_ID_HEADER)
         rid = incoming or str(uuid.uuid4())
         request.state.request_id = rid
-        response = await call_next(request)
-        response.headers[REQUEST_ID_HEADER] = rid
-        return response
+        token = request_id_ctx.set(rid)
+        try:
+            response = await call_next(request)
+            response.headers[REQUEST_ID_HEADER] = rid
+            return response
+        finally:
+            request_id_ctx.reset(token)
 
 
 def register_exception_handlers(app: FastAPI) -> None:
