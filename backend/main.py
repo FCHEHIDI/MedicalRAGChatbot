@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 from api.errors import RequestIDMiddleware, register_exception_handlers
+from api.performance import PerformanceMiddleware, latency_store, register_observability_routes
 from domain import (
     RAGConfig,
     cleanup_memory,
@@ -132,7 +133,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Outermost first: request id, then CORS
+# Outermost first: performance (end-to-end latency), request id, CORS
+app.add_middleware(PerformanceMiddleware, store=latency_store)
 app.add_middleware(RequestIDMiddleware)
 app.add_middleware(
     CORSMiddleware,
@@ -143,6 +145,7 @@ app.add_middleware(
 )
 
 register_exception_handlers(app)
+register_observability_routes(app, store=latency_store)
 
 
 # ============================================
