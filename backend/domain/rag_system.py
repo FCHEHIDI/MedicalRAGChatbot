@@ -7,11 +7,13 @@ from __future__ import annotations
 
 import gc
 import sys
-from typing import Any, List, Optional
+from typing import Any, List
 
 import chromadb
 from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
+
+from exceptions.domain import EmbeddingError, RAGException
 
 try:
     import ollama
@@ -22,22 +24,6 @@ except ImportError:
     ollama = None  # type: ignore[assignment, unused-ignore]
     OLLAMA_AVAILABLE = False
     print("⚠️ Ollama not available - will use fallback mode")
-
-
-# --- Domain errors (no HTTP) ---
-
-
-class RAGException(Exception):
-    """Base class for RAG pipeline failures (vector store, ingest, search)."""
-
-
-class EmbeddingError(RAGException):
-    """Embedding model load or encode failure."""
-
-
-class DocumentNotFoundError(RAGException):
-    """A requested document id is not present in the knowledge base."""
-
 
 # --- Memory helpers (shared with API for /memory-status) ---
 

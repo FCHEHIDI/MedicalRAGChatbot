@@ -23,7 +23,7 @@ from domain import (
     MedicalRAGSystem,
     cleanup_memory,
     get_memory_usage,
-    RAGException,
+    RAGDomainError,
 )
 
 # ============================================
@@ -125,7 +125,7 @@ async def startup_event():
         print("🎉 RAG system fully initialized and ready!")
         print("🌐 Backend server is now accepting requests on http://localhost:8000")
 
-    except RAGException as e:
+    except RAGDomainError as e:
         print(f"❌ Startup error: {e}")
         print("💡 Check that Ollama is running: ollama serve")
     except Exception as e:
@@ -176,7 +176,7 @@ async def chat(request: ChatRequest):
             sources=knowledge["sources"],
         )
 
-    except RAGException as e:
+    except RAGDomainError as e:
         print(f"❌ Chat error: {e}")
         raise HTTPException(status_code=500, detail="Chat processing failed") from e
     except Exception as e:
@@ -196,7 +196,7 @@ async def add_document(request: DocumentRequest):
             request.title,
             request.category or "general",
         )
-    except RAGException as e:
+    except RAGDomainError as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
