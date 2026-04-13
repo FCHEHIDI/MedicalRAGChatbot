@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import gc
 import sys
-from typing import Any, List, Type
+from typing import Any, List, Optional, Type
 
 try:
     import ollama  # noqa: F401
@@ -92,12 +92,14 @@ class MedicalRAGSystem:
         llm: LLMPort,
         *,
         config: Type[RAGConfig] = RAGConfig,
+        lcel_chain: Optional[Any] = None,
     ) -> None:
         print("🚀 Initializing Memory-Optimized Medical RAG System...")
         self._vector_store = vector_store
         self._embeddings = embeddings
         self._llm = llm
         self._config = config
+        self._lcel_chain = lcel_chain
         self.request_count = 0
 
         cleanup_memory()
@@ -211,6 +213,14 @@ class MedicalRAGSystem:
         if self.request_count % self._config.CLEANUP_FREQUENCY == 0:
             cleanup_memory()
             print(f"🧹 Periodic cleanup after {self.request_count} requests")
+
+        # LangChain 0.3+ LCEL: retriever | prompt | llm | StrOutputParser (no .run() / LLMChain)
+        if self._lcel_chain is not None and self._llm.is_ready:
+            try:
+                return self._lcel_chain.invoke({"question": query})
+            except Exception as e:
+                print(f"❌ LCEL generation error: {e}")
+                print("🔄 Falling back to direct LLM / template response...")
 
         system_prompt = """You are a helpful medical assistant. Use the provided context to answer questions accurately and professionally.
 
